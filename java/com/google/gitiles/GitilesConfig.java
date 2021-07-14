@@ -35,9 +35,15 @@ public class GitilesConfig {
   }
 
   public static File defaultFile(FilterConfig filterConfig) {
-    String configPath = System.getProperty(PROPERTY_NAME, DEFAULT_PATH);
+    String configPath = System.getProperty(PROPERTY_NAME);
+    if (configPath == null && filterConfig != null) {
+      configPath = filterConfig.getServletContext().getInitParameter(FILTER_CONFIG_PARAM);
+    }
     if (configPath == null && filterConfig != null) {
       configPath = filterConfig.getInitParameter(FILTER_CONFIG_PARAM);
+    }
+    if (configPath == null) {
+      configPath = DEFAULT_PATH;
     }
     checkNotNull(configPath);
     return new File(configPath);

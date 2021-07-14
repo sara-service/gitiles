@@ -115,6 +115,9 @@ public class GitilesServlet extends MetaServlet {
 
               @Override
               public String getInitParameter(String name) {
+                final String value = config.getServletContext().getInitParameter(name);
+                if (value != null)
+                  return value;
                 return config.getInitParameter(name);
               }
 
