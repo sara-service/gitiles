@@ -10,3 +10,4 @@
 /bazel-gitiles
 /bazel-out
 /bazel-testlogs
+/target/
