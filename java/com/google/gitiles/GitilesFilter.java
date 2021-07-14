@@ -191,7 +191,7 @@ class GitilesFilter extends MetaFilter {
       @Nullable TimeCache timeCache,
       @Nullable BlameCache blameCache,
       @Nullable GitwebRedirectFilter gitwebRedirect,
-      BranchRedirectFilter branchRedirect,
+      @Nullable BranchRedirectFilter branchRedirect,
       @Nullable Filter errorHandler) {
     this.config = checkNotNull(config, "config");
     this.renderer = renderer;
@@ -321,6 +321,7 @@ class GitilesFilter extends MetaFilter {
     setDefaultTimeCache();
     setDefaultBlameCache();
     setDefaultGitwebRedirect();
+    setDefaultBranchRedirect();
     setDefaultErrorHandler();
   }
 
@@ -425,6 +426,12 @@ class GitilesFilter extends MetaFilter {
       if (config.getBoolean("gitiles", null, "redirectGitweb", true)) {
         gitwebRedirect = new GitwebRedirectFilter();
       }
+    }
+  }
+
+  private void setDefaultBranchRedirect() {
+    if (branchRedirect == null) {
+      branchRedirect = new BranchRedirectFilter();
     }
   }
 
