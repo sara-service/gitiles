@@ -24,6 +24,7 @@ import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
+import org.eclipse.jgit.http.server.GitFilter;
 import org.eclipse.jgit.http.server.glue.MetaServlet;
 import org.eclipse.jgit.lib.Config;
 import org.eclipse.jgit.transport.resolver.RepositoryResolver;
@@ -52,7 +53,8 @@ public class GitilesServlet extends MetaServlet {
       @Nullable TimeCache timeCache,
       @Nullable BlameCache blameCache,
       @Nullable GitwebRedirectFilter gitwebRedirect,
-      BranchRedirectFilter branchRedirect) {
+      @Nullable BranchRedirectFilter branchRedirect,
+      @Nullable GitFilter gitFilter) {
     this(
         config,
         renderer,
@@ -64,6 +66,7 @@ public class GitilesServlet extends MetaServlet {
         blameCache,
         gitwebRedirect,
         branchRedirect,
+        gitFilter,
         null);
   }
 
@@ -77,7 +80,8 @@ public class GitilesServlet extends MetaServlet {
       @Nullable TimeCache timeCache,
       @Nullable BlameCache blameCache,
       @Nullable GitwebRedirectFilter gitwebRedirect,
-      BranchRedirectFilter branchRedirect,
+      @Nullable BranchRedirectFilter branchRedirect,
+      @Nullable GitFilter gitFilter,
       @Nullable Filter errorHandler) {
     super(
         new GitilesFilter(
@@ -91,6 +95,7 @@ public class GitilesServlet extends MetaServlet {
             blameCache,
             gitwebRedirect,
             branchRedirect,
+            gitFilter,
             errorHandler));
   }
 

@@ -140,7 +140,7 @@ class DevServer {
     } else {
       servlet =
           new GitilesServlet(
-              cfg, renderer, null, null, null, null, null, null, null, new BranchRedirectFilter());
+              cfg, renderer, null, null, null, null, null, null, null, null, null);
     }
 
     ServletContextHandler handler = new ServletContextHandler();

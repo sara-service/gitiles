@@ -33,6 +33,7 @@ import com.google.gitiles.doc.DocServlet;
 import java.io.File;
 import java.io.IOException;
 import java.net.UnknownHostException;
+import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
@@ -48,6 +49,8 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.eclipse.jgit.errors.ConfigInvalidException;
+import org.eclipse.jgit.http.server.GitFilter;
+import org.eclipse.jgit.http.server.HttpServerText;
 import org.eclipse.jgit.http.server.glue.MetaFilter;
 import org.eclipse.jgit.http.server.glue.ServletBinder;
 import org.eclipse.jgit.lib.Config;
@@ -76,8 +79,7 @@ class GitilesFilter extends MetaFilter {
 
   @VisibleForTesting
   static final Pattern ROOT_REGEX =
-      Pattern.compile(
-          ""
+      Pattern.compile(""
               + "^(      " // 1. Everything
               + "  /*    " // Excess slashes
               + "  (/)   " // 2. Repo name (just slash)
@@ -88,19 +90,14 @@ class GitilesFilter extends MetaFilter {
 
   @VisibleForTesting
   static final Pattern REPO_REGEX =
-      Pattern.compile(
-          ""
+      Pattern.compile(""
               + "^(                     " // 1. Everything
               + "  /*                   " // Excess slashes
               + "  (                    " // 2. Repo name
               + "   /                   " // Leading slash
               + "   (?:.(?!             " // Anything, as long as it's not followed by...
-              + "        /"
-              + CMD
-              + "/  " // the special "/<CMD>/" separator,
-              + "        |/"
-              + CMD
-              + "$ " // or "/<CMD>" at the end of the string
+              + "        /" + CMD + "/  " // the special "/<CMD>/" separator,
+              + "        |/" + CMD + "$ " // or "/<CMD>" at the end of the string
               + "        ))*?           "
               + "  )                    "
               + "  /*                   " // Trailing slashes
@@ -110,18 +107,28 @@ class GitilesFilter extends MetaFilter {
           Pattern.COMMENTS);
 
   @VisibleForTesting
+  static final String CLONE_PREFIX = (""
+              + "^(                     " // Everything, matching (.+) usage by GitFilter
+              + "  /*                   " // Excess slashes
+              + "   /                   " // Leading slash
+              + "   (?:.(?!             " // Anything, as long as it's not followed by...
+              + "        /" + CMD + "/  " // the special "/<CMD>/" separator
+              + "        ))*            "
+              + "  /*                   ") // Trailing slashes
+          .replaceAll(" ", "");
+  @VisibleForTesting
+  static final String CLONE_SUFFIX = ")";
+
+  @VisibleForTesting
   static final Pattern REPO_PATH_REGEX =
-      Pattern.compile(
-          ""
+      Pattern.compile(""
               + "^(              " // 1. Everything
               + "  /*            " // Excess slashes
               + "  (             " // 2. Repo name
               + "   /            " // Leading slash
               + "   .*?          " // Anything, non-greedy
               + "  )             "
-              + "  /("
-              + CMD
-              + ")" // 3. Command
+              + "  /(" + CMD + ")" // 3. Command
               + "  (             " // 4. Path
               + "   (?:/.*)?     " // Slash path, or nothing.
               + "  )             "
@@ -178,6 +185,7 @@ class GitilesFilter extends MetaFilter {
   private Filter errorHandler;
   private BranchRedirectFilter branchRedirect;
   private boolean initialized;
+  private GitFilter gitFilter;
 
   GitilesFilter() {}
 
@@ -192,6 +200,7 @@ class GitilesFilter extends MetaFilter {
       @Nullable BlameCache blameCache,
       @Nullable GitwebRedirectFilter gitwebRedirect,
       @Nullable BranchRedirectFilter branchRedirect,
+      @Nullable GitFilter gitFilter,
       @Nullable Filter errorHandler) {
     this.config = checkNotNull(config, "config");
     this.renderer = renderer;
@@ -206,6 +215,7 @@ class GitilesFilter extends MetaFilter {
     }
     this.errorHandler = errorHandler;
     this.branchRedirect = branchRedirect;
+    this.gitFilter = gitFilter;
   }
 
   @Override
@@ -231,6 +241,13 @@ class GitilesFilter extends MetaFilter {
       root.through(branchRedirect);
     }
     root.through(dispatchFilter);
+
+    if (gitFilter != null) {
+      // if active, clone URLs override gitiles URLs. this means stupidly named
+      // repositories ("info/refs") aren't shown by gitiles. which is thoroughly
+      // acceptable.
+      gitFilter.init(config);
+    }
 
     serveRegex(REPO_REGEX)
         .through(repositoryFilter)
@@ -316,6 +333,7 @@ class GitilesFilter extends MetaFilter {
     setDefaultConfig(filterConfig);
     setDefaultRenderer(filterConfig);
     setDefaultUrls();
+    setDefaultGitFilter();
     setDefaultAccess();
     setDefaultVisibilityCache();
     setDefaultTimeCache();
@@ -361,6 +379,41 @@ class GitilesFilter extends MetaFilter {
     }
   }
 
+  private void setDefaultGitFilter() {
+    if (gitFilter == null) {
+      if (config.getBoolean("gitiles", null, "enableClone", false)) {
+        // add routes to capture clone URLs, redirecting them to GitFilter
+        // TODO ugly hack, but hard to do correctly without a complete refactor
+        gitFilter = new GitFilter() {
+          @Override
+          public ServletBinder serve(String path) {
+            if (!path.startsWith("*"))
+              throw new IllegalArgumentException(MessageFormat
+                  .format(HttpServerText.get().pathNotSupported, path));
+            GitilesFilter.this
+                .serveRegex(
+                    CLONE_PREFIX + path.substring(1) + "$" + CLONE_SUFFIX)
+                .through(gitFilter);
+            return super.serve(path);
+          }
+
+          @Override
+          public ServletBinder serveRegex(String expression) {
+            if (!expression.startsWith("^/(.*)"))
+              throw new IllegalArgumentException(MessageFormat
+                  .format(HttpServerText.get().pathNotSupported, expression));
+            GitilesFilter.this
+                .serveRegex(
+                    CLONE_PREFIX + expression.substring(6) + CLONE_SUFFIX)
+                .through(gitFilter);
+            return super.serveRegex(expression);
+          }
+        };
+        gitFilter.setReceivePackFactory(null); // always forbid writes
+      }
+    }
+  }
+
   private void setDefaultAccess() throws ServletException {
     if (accessFactory == null || resolver == null) {
       String basePath = config.getString("gitiles", null, "basePath");
@@ -384,6 +437,9 @@ class GitilesFilter extends MetaFilter {
           accessFactory =
               new DefaultAccess.Factory(
                   new File(basePath), getBaseGitUrl(config), config, fileResolver);
+          if (gitFilter != null) {
+            gitFilter.setRepositoryResolver(fileResolver);
+          }
         } catch (IOException e) {
           throw new ServletException(e);
         }
