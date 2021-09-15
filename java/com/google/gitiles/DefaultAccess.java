@@ -247,7 +247,8 @@ public class DefaultAccess implements GitilesAccess {
           Collections.addAll(todo, children);
         }
       } catch (ServiceNotEnabledException e) {
-        throw new IOException(e);
+        // repository exists, but cannot be accessed over http. pretend that the
+        // repository doesn't exist by simply not adding it to the list.
       }
     }
     return repos;
